@@ -1,0 +1,436 @@
+{% extends "base.html" %}
+
+{% block title %}Health Dashboard - Health Monitoring System{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- User Info -->
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-user"></i> {{ user.name }}
+                    <span class="badge bg-primary ms-2">{{ user.fitness_level.title() }}</span>
+                </h5>
+                <p class="card-text text-muted">
+                    Age: {{ user.age or 'N/A' }} | 
+                    Height: {{ user.height or 'N/A' }}cm | 
+                    Weight: {{ user.weight or 'N/A' }}kg |
+                    Last Updated: {{ current_status.last_updated or 'Never' }}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Current Health Status -->
+    <div class="col-lg-4 mb-4">
+        <div class="card health-card {% if current_status.is_anomaly %}danger{% else %}success{% endif %}">
+            <div class="card-body text-center">
+                <h5 class="card-title">Current Status</h5>
+                <div class="metric-value {% if current_status.is_anomaly %}text-danger{% else %}text-success{% endif %}">
+                    {% if current_status.is_anomaly %}
+                        <i class="fas fa-exclamation-triangle"></i> ALERT
+                    {% else %}
+                        <i class="fas fa-check-circle"></i> NORMAL
+                    {% endif %}
+                </div>
+                <div class="metric-label">{{ current_status.status }}</div>
+                {% if current_status.health_score %}
+                <div class="mt-2">
+                    <span class="badge bg-primary">Health Score: {{ current_status.health_score }}/100</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Heart Rate -->
+    <div class="col-lg-4 mb-4">
+        <div class="card health-card">
+            <div class="card-body text-center">
+                <h5 class="card-title">
+                    <i class="fas fa-heartbeat text-danger"></i> Heart Rate
+                </h5>
+                <div class="metric-value text-primary">{{ current_status.heart_rate or 0 }}</div>
+                <div class="metric-label">BPM</div>
+                <div class="mt-2">
+                    <span class="trend-{{ trends.heart_rate }}">
+                        <i class="fas fa-arrow-{% if trends.heart_rate == 'increasing' %}up{% elif trends.heart_rate == 'decreasing' %}down{% else %}right{% endif %}"></i>
+                        {{ trends.heart_rate.replace('_', ' ').title() }}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Blood Oxygen -->
+    <div class="col-lg-4 mb-4">
+        <div class="card health-card">
+            <div class="card-body text-center">
+                <h5 class="card-title">
+                    <i class="fas fa-lungs text-info"></i> Blood Oxygen
+                </h5>
+                <div class="metric-value text-primary">{{ current_status.blood_oxygen or 0 }}%</div>
+                <div class="metric-label">SpO2</div>
+                <div class="mt-2">
+                    <span class="trend-{{ trends.blood_oxygen }}">
+                        <i class="fas fa-arrow-{% if trends.blood_oxygen == 'increasing' %}up{% elif trends.blood_oxygen == 'decreasing' %}down{% else %}right{% endif %}"></i>
+                        {{ trends.blood_oxygen.replace('_', ' ').title() }}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Health Data Chart -->
+    <div class="col-lg-8 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-line"></i> Health Trends
+                    <button class="btn btn-sm btn-outline-primary float-end" onclick="refreshChart()">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <canvas id="healthChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Alerts -->
+    <div class="col-lg-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-bell"></i> Recent Alerts
+                    <span class="badge bg-danger">{{ recent_alerts|length }}</span>
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if recent_alerts %}
+                    <div class="alerts-container" style="max-height: 300px; overflow-y: auto;">
+                        {% for alert in recent_alerts %}
+                        <div class="alert-item alert-{{ alert.severity }}">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <strong>{{ alert.title }}</strong>
+                                    <p class="mb-1 small">{{ alert.message }}</p>
+                                    <small class="text-muted">{{ alert.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                                </div>
+                                <span class="badge bg-{{ 'danger' if alert.severity == 'high' else 'warning' if alert.severity == 'medium' else 'success' }}">
+                                    {{ alert.severity.upper() }}
+                                </span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center text-muted py-3">
+                        <i class="fas fa-check-circle fa-2x mb-2"></i>
+                        <p>No recent alerts</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Activity Level and Additional Info -->
+<div class="row">
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-running"></i> Activity Status</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span>Current Activity Level:</span>
+                    <span class="badge bg-{% if current_status.activity_level == 'high' %}success{% elif current_status.activity_level == 'moderate' %}warning{% else %}secondary{% endif %} fs-6">
+                        {{ (current_status.activity_level or 'Unknown').title() }}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-cog"></i> Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-primary btn-sm" onclick="addManualData()">
+                        <i class="fas fa-plus"></i> Add Manual Data
+                    </button>
+                    <button class="btn btn-outline-info btn-sm" onclick="viewAllAlerts()">
+                        <i class="fas fa-list"></i> View All Alerts
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Data Stats -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-info-circle"></i> System Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-3">
+                        <div class="metric-value text-primary" id="totalRecords">-</div>
+                        <div class="metric-label">Total Records</div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="metric-value text-warning" id="todayRecords">-</div>
+                        <div class="metric-label">Today's Records</div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="metric-value text-danger" id="anomalyCount">-</div>
+                        <div class="metric-label">Anomalies Detected</div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="metric-value text-success" id="lastSync">-</div>
+                        <div class="metric-label">Last Sync</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script id="chart-data" type="application/json">{{ chart_data | tojson | safe }}</script>
+<script>
+    // Chart configuration - load JSON data from script tag
+    let chartData;
+    try {
+        const dataScript = document.getElementById('chart-data');
+        chartData = JSON.parse(dataScript.textContent);
+    } catch (e) {
+        console.warn('Failed to load chart data, using defaults');
+        chartData = null;
+    }
+    
+    // Ensure chartData has required properties with fallback
+    if (!chartData || typeof chartData !== 'object') {
+        chartData = {
+            labels: [],
+            heart_rate: [],
+            blood_oxygen: []
+        };
+    }
+    
+    const ctx = document.getElementById('healthChart').getContext('2d');
+    const healthChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: chartData.labels.slice(-24), // Last 24 data points
+            datasets: [{
+                label: 'Heart Rate (BPM)',
+                data: chartData.heart_rate.slice(-24),
+                borderColor: 'rgb(255, 99, 132)',
+                backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                tension: 0.4,
+                yAxisID: 'y'
+            }, {
+                label: 'Blood Oxygen (%)',
+                data: chartData.blood_oxygen.slice(-24),
+                borderColor: 'rgb(54, 162, 235)',
+                backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                tension: 0.4,
+                yAxisID: 'y1'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            scales: {
+                x: {
+                    display: true,
+                    title: {
+                        display: true,
+                        text: 'Time'
+                    }
+                },
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: 'Heart Rate (BPM)'
+                    },
+                    min: 40,
+                    max: 120
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: {
+                        display: true,
+                        text: 'Blood Oxygen (%)'
+                    },
+                    min: 85,
+                    max: 100,
+                    grid: {
+                        drawOnChartArea: false,
+                    },
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                },
+                title: {
+                    display: true,
+                    text: 'Real-time Health Monitoring'
+                }
+            }
+        }
+    });
+
+    // Load system statistics
+    function loadSystemStats() {
+        fetch('/api/health_data?user_id={{ current_user.user_id }}&limit=1000')
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                document.getElementById('totalRecords').textContent = data.count || data.data.length;
+                
+                // Count today's records
+                const today = new Date().toISOString().split('T')[0];
+                const todayCount = data.data.filter(record => 
+                    record.timestamp && record.timestamp.startsWith(today)
+                ).length;
+                document.getElementById('todayRecords').textContent = todayCount;
+                
+                // Count anomalies
+                const anomalies = data.data.filter(record => record.is_anomaly).length;
+                document.getElementById('anomalyCount').textContent = anomalies;
+                
+                // Last sync time
+                const lastRecord = data.data.length > 0 ? data.data[0] : null;
+                if (lastRecord && lastRecord.timestamp) {
+                    const lastTime = new Date(lastRecord.timestamp);
+                    document.getElementById('lastSync').textContent = lastTime.toLocaleTimeString();
+                } else {
+                    document.getElementById('lastSync').textContent = 'No data';
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error loading stats:', error);
+            document.getElementById('totalRecords').textContent = '0';
+            document.getElementById('todayRecords').textContent = '0';
+            document.getElementById('anomalyCount').textContent = '0';
+            document.getElementById('lastSync').textContent = 'Error';
+        });
+    }
+
+    // Additional functions
+    function refreshChart() {
+        showLoading("Refreshing chart data...");
+        setTimeout(() => {
+            hideLoading();
+            location.reload();
+        }, 1000);
+    }
+
+    function addManualData() {
+        const heartRate = prompt("Enter heart rate (BPM):", "75");
+        const bloodOxygen = prompt("Enter blood oxygen (%):", "98");
+        
+        if (heartRate && bloodOxygen) {
+            const data = {
+                heart_rate: parseFloat(heartRate),
+                blood_oxygen: parseFloat(bloodOxygen),
+                activity_level: 'moderate',
+                timestamp: new Date().toISOString()
+            };
+            
+            fetch('/api/health_data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.status === 'success') {
+                    alert('Health data added successfully!');
+                    location.reload();
+                } else {
+                    alert('Error: ' + result.message);
+                }
+            })
+            .catch(error => {
+                alert('Error adding data: ' + error);
+            });
+        }
+    }
+
+    function viewAllAlerts() {
+        fetch('/api/alerts?user_id=sample_user_001')
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                let alertsHtml = '<div class="modal fade" id="alertsModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">';
+                alertsHtml += '<div class="modal-header"><h5 class="modal-title">All Alerts</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>';
+                alertsHtml += '<div class="modal-body" style="max-height: 400px; overflow-y: auto;">';
+                
+                if (data.alerts.length > 0) {
+                    data.alerts.forEach(alert => {
+                        alertsHtml += `<div class="alert-item alert-${alert.severity} mb-2">`;
+                        alertsHtml += `<strong>${alert.title}</strong><br>`;
+                        alertsHtml += `<small>${alert.message}</small><br>`;
+                        alertsHtml += `<small class="text-muted">${new Date(alert.created_at).toLocaleString()}</small>`;
+                        alertsHtml += `</div>`;
+                    });
+                } else {
+                    alertsHtml += '<p class="text-center text-muted">No alerts found.</p>';
+                }
+                
+                alertsHtml += '</div></div></div></div>';
+                
+                document.body.insertAdjacentHTML('beforeend', alertsHtml);
+                const modal = new bootstrap.Modal(document.getElementById('alertsModal'));
+                modal.show();
+                
+                // Remove modal after hiding
+                document.getElementById('alertsModal').addEventListener('hidden.bs.modal', function() {
+                    this.remove();
+                });
+            }
+        })
+        .catch(error => {
+            alert('Error loading alerts: ' + error);
+        });
+    }
+
+    // Load initial data
+    document.addEventListener('DOMContentLoaded', function() {
+        loadSystemStats();
+    });
+</script>
+{% endblock %}

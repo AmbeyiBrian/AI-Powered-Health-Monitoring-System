@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block title %}My Devices - Health Monitoring System{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-10 mx-auto">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="fas fa-mobile-alt"></i> My Health Devices</h2>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addDeviceModal">
+                <i class="fas fa-plus"></i> Add New Device
+            </button>
+        </div>
+
+        <!-- Devices List -->
+        <div class="row">
+            {% for device in devices %}
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-{{ 'watch' if device.device_type == 'smartwatch' else 'heartbeat' if device.device_type == 'fitness_tracker' else 'thermometer-half' if device.device_type == 'blood_pressure' else 'tint' if device.device_type == 'glucose_monitor' else 'microscope' }}"></i>
+                            {{ device.device_name }}
+                        </h5>
+                        <span class="badge bg-{{ 'success' if device.is_active else 'secondary' }}">
+                            {{ 'Active' if device.is_active else 'Inactive' }}
+                        </span>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">
+                            <strong>Type:</strong> {{ device.device_type.replace('_', ' ').title() }}<br>
+                            <strong>Model:</strong> {{ device.device_model or 'Not specified' }}<br>
+                            <strong>Added:</strong> {{ device.created_at.strftime('%B %d, %Y') }}<br>
+                            <strong>Last Data:</strong> {{ device.last_data_received.strftime('%B %d, %Y at %I:%M %p') if device.last_data_received else 'No data yet' }}
+                        </p>
+                        
+                        <div class="mt-3">
+                            <small class="text-muted">API Key (for device configuration):</small>
+                            <div class="input-group">
+                                <input type="text" class="form-control form-control-sm" 
+                                       value="{{ device.api_key }}" 
+                                       id="apiKey{{ device.id }}" readonly>
+                                <button class="btn btn-outline-secondary btn-sm" 
+                                        onclick="copyApiKey('{{ device.id }}')">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-sm btn-outline-primary" 
+                                    data-device-id="{{ device.id }}"
+                                    data-is-active="{{ device.is_active }}"
+                                    onclick="toggleDevice(this)">
+                                <i class="fas fa-{{ 'pause' if device.is_active else 'play' }}"></i>
+                                {{ 'Deactivate' if device.is_active else 'Activate' }}
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" 
+                                    data-device-id="{{ device.id }}"
+                                    data-device-name="{{ device.device_name }}"
+                                    onclick="deleteDevice(this)">
+                                <i class="fas fa-trash"></i> Remove
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="col-12">
+                <div class="text-center py-5">
+                    <i class="fas fa-mobile-alt fa-3x text-muted"></i>
+                    <h4 class="mt-3 text-muted">No Devices Registered</h4>
+                    <p class="text-muted">Add your first health monitoring device to get started.</p>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addDeviceModal">
+                        <i class="fas fa-plus"></i> Add Device
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Add Device Modal -->
+<div class="modal fade" id="addDeviceModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-plus"></i> Add New Device</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST">
+                {{ form.hidden_tag() }}
+                <div class="modal-body">
+                    <div class="mb-3">
+                        {{ form.device_name.label(class="form-label") }}
+                        {{ form.device_name(class="form-control") }}
+                        {% for error in form.device_name.errors %}
+                            <div class="text-danger">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        {{ form.device_type.label(class="form-label") }}
+                        {{ form.device_type(class="form-select") }}
+                        {% for error in form.device_type.errors %}
+                            <div class="text-danger">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        {{ form.device_model.label(class="form-label") }}
+                        {{ form.device_model(class="form-control") }}
+                        {% for error in form.device_model.errors %}
+                            <div class="text-danger">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <strong>Note:</strong> After adding your device, you'll receive an API key to configure your device to send data to this platform.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Add Device
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function copyApiKey(deviceId) {
+    const apiKeyInput = document.getElementById('apiKey' + deviceId);
+    apiKeyInput.select();
+    apiKeyInput.setSelectionRange(0, 99999);
+    navigator.clipboard.writeText(apiKeyInput.value).then(() => {
+        // Show success feedback
+        const button = event.target.closest('button');
+        const originalIcon = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-check"></i>';
+        button.classList.add('btn-success');
+        button.classList.remove('btn-outline-secondary');
+        
+        setTimeout(() => {
+            button.innerHTML = originalIcon;
+            button.classList.remove('btn-success');
+            button.classList.add('btn-outline-secondary');
+        }, 2000);
+    });
+}
+
+function toggleDevice(button) {
+    const deviceId = button.dataset.deviceId;
+    const isActive = button.dataset.isActive === 'True';
+    const activate = !isActive;
+    const action = activate ? 'activate' : 'deactivate';
+    
+    if (confirm(`Are you sure you want to ${action} this device?`)) {
+        fetch(`/auth/device/${deviceId}/toggle`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrf_token]').value
+            },
+            body: JSON.stringify({ active: activate })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            alert('Error: ' + error);
+        });
+    }
+}
+
+function deleteDevice(button) {
+    const deviceId = button.dataset.deviceId;
+    const deviceName = button.dataset.deviceName;
+    
+    if (confirm(`Are you sure you want to permanently remove "${deviceName}"? This action cannot be undone.`)) {
+        fetch(`/auth/device/${deviceId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrf_token]').value
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            alert('Error: ' + error);
+        });
+    }
+}
+</script>
+{% endblock %}
